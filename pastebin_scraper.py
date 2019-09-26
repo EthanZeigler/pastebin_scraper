@@ -8,7 +8,8 @@
 
 from lib.Pastebin import Pastebin, PastebinPaste
 from time import sleep
-from settings import log_file, PRINT_LOG
+from settings import log_file, PRINT_LOG, DB_DUMP_TABLE, DB_DB
+import sqlite3
 import threading
 import logging
 import sys
@@ -37,10 +38,35 @@ def monitor():
         format='%(asctime)s [%(levelname)s] %(message)s',
         handlers=handlers
     )
+
+
+    db_client = sqlite3.connect(DB_DB, check_same_thread=False)
+
+    c = db_client.cursor()
+    c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (DB_DUMP_TABLE,))
+    if c.fetchone() is None:
+        c.execute('''CREATE TABLE %s(
+            pk INTEGER PRIMARY KEY,
+            text CLOB,
+            emails CLOB,
+            passwords CLOB,
+            num_emails INTEGER,
+            num_passwords INTEGER,
+            type VARCHAR(10),
+            db_keywords FLOAT,
+            url VARCHAR(60),
+            author VARCHAR(30)
+        );''' % (DB_DUMP_TABLE))
+    db_client.commit()
+    c.close()
+
+
     logging.info('Monitoring...')
     paste_lock = threading.Lock()
+    db_lock = threading.Lock()
 
-    pastebin_thread = threading.Thread(target=Pastebin().monitor, args=[paste_lock])
+    pastebin_thread = threading.Thread(target=Pastebin().monitor, args=[paste_lock, db_lock, db_client])
 
     # changed threading to not be in a for loop
     # we're only monitoring one site now - Moe

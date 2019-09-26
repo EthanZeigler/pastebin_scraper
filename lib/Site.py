@@ -1,9 +1,12 @@
 from queue import Queue
 import time
-from settings import USE_DB, DB_HOST, DB_PORT, DB_DB, DB_PASS, DB_USER
+from settings import USE_DB, DB_DB, DB_DUMP_TABLE, DB_ACCT_TABLE, REQUEST_SPACING
 import logging
 from . import helper
-import pymysql
+import sqlite3
+import threading
+
+
 
 
 class Site(object):
@@ -30,10 +33,6 @@ class Site(object):
     def __init__(self, queue=None):
         if queue is None:
             self.queue = []
-        if USE_DB:
-            #update DB to mysql\
-            self.db_client = pymysql.connect(host = DB_HOST, port = DB_PORT, user = DB_USER, password = DB_PASS, db = DB_DB, charset = 'utf8mb4', cursorclass = pymysql.cursors.DictCursor, autocommit = True)
-            
 
     def empty(self):
         return len(self.queue) == 0
@@ -64,23 +63,38 @@ class Site(object):
     def list(self):
         print('\n'.join(url for url in self.queue))
 
-    def monitor(self, t_lock):
+    def monitor(self, t_lock, db_lock, db_client):
         self.update()
         while(1):
             while not self.empty():
                 paste = self.get()
                 self.ref_id = paste.id
-                logging.info('[*] Checking ' + paste.url)
+                logging.info('[*] Checking + Spacer ' + paste.url)
                 paste.text = self.get_paste_text(paste)
+                time.sleep(REQUEST_SPACING)
                 interesting = helper.run_match(paste)
                 if interesting:
                     logging.info('[*] FOUND ' + (paste.type).upper() + ' ' +  paste.url)
                     if USE_DB:
-                        cursor = self.db_client.cursor()
+                        db_lock.acquire()
                         try:
-                            cursor.execute("INSERT INTO pastes (pid, text, emails, hashes, num_emails, num_hashes, type, db_keywords, url, author) VALUES (\""+str(paste.id)+"\",\""+str(paste.text)+"\",\""+str(paste.emails)+"\",\""+str(paste.hashes)+"\",\""+str(paste.num_emails)+"\",\""+str(paste.num_hashes)+"\",\""+str(paste.type)+"\",\""+str(paste.db_keywords)+"\",\""+str("https://pastebin.com/"+paste.id)+"\",\""+str(paste.author)+"\")")
+                            cursor =  db_client.cursor()
+                            cursor.execute('''INSERT INTO %s (
+                                text,
+                                emails,
+                                hashes,
+                                num_emails,
+                                num_hashes,
+                                type,
+                                db_keywords,
+                                url,
+                                author
+                            ) VALUES (
+                                ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            )''' % (DB_DUMP_TABLE), (paste.text, str(paste.emails), str(paste.hashes), paste.num_emails, paste.num_hashes, paste.type, str(paste.db_keywords), str("https://pastebin.com/"+paste.id), paste.author,))
                         except:
                             logging.info('[*] ERROR: Failed to save paste. Manual review: ' + paste.url)
+                        db_lock.release()
             self.update()
             while self.empty():
                 logging.debug('[*] No results... sleeping')

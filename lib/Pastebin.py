@@ -7,14 +7,14 @@ import logging
 import requests
 import urllib
 import json
+from bs4 import BeautifulSoup
 
 
 class PastebinPaste(Paste):
     def __init__(self, id):
         self.id = id
         self.headers = None
-        # update pastebin scraping api URL. Must have pastebin pro account to whitelist your IP
-        self.url = 'https://scrape.pastebin.com/api_scrape_item.php?i=' + self.id
+        self.url = 'http://pastebin.com/raw.php?i=' + self.id
         super(PastebinPaste, self).__init__()
 
 
@@ -28,7 +28,6 @@ class Pastebin(Site):
         self.session = requests.Session()
         super(Pastebin, self).__init__()
 
-
     def update(self):
         '''update(self) - Fill Queue with new Pastebin IDs'''
         logging.info('Retrieving Pastebin ID\'s')
@@ -36,33 +35,24 @@ class Pastebin(Site):
         raw = None
         while not raw:
             try:
-                raw = urllib.request.urlopen("https://scrape.pastebin.com/api_scraping.php?limit=" + str(SCRAPE_LIMIT))
+                raw = self.session.get(self.BASE_URL + '/archive').text
             except:
                 logging.info('Error with pastebin')
                 raw = None
                 sleep(5)
-        # import API result as JSON
-        decoded = raw.read().decode('utf-8')
-        raw_json = json.loads(decoded)
-        #parse json to get keys
-        results = []
-        #populate results list with paste_ids
-        for paste_bulk in raw_json:
-            results.append(paste_bulk['key'])
+        results = BeautifulSoup(raw).find_all(
+            lambda tag: tag.name == 'td' and tag.a and '/archive/' not in tag.a['href'] and tag.a['href'][1:])
         if not self.ref_id:
-            #up to 100 new pastes
-            results = results[:100]
+            results = results[:60]
         for entry in results:
-            paste = PastebinPaste(entry)
-            # Check to see if we found our last checked paste_id
+            paste = PastebinPaste(entry.a['href'][1:])
+            # Check to see if we found our last checked URL
             if paste.id == self.ref_id:
-                #if paste_id matches last checked id, no more new stuff
                 break
             new_pastes.append(paste)
         for entry in new_pastes[::-1]:
             logging.info('Adding URL: ' + entry.url)
             self.put(entry)
-
 
     def get_paste_text(self, paste):
         return helper.download(paste.url)

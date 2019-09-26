@@ -37,6 +37,14 @@ This creates a table named *pastes* with the following attributes:
 
 column name | [data type]
 ------------ | -------------
+                    text CLOB,
+                    emails CLOB,
+                    passwords CLOB,
+                    type VARCHAR(10),
+                    db_keywords FLOAT,
+                    url VARCHAR(60),
+                    author VARCHAR(30)
+
 PID | [char(10)]
 text | [longblob]
 emails | [longblob]
